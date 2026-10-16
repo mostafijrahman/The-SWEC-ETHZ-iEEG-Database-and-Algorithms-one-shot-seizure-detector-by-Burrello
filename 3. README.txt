@@ -1,0 +1,299 @@
+===============================================================================
+ SWEC-ETHZ Short-term Dataset - Replication of the LBP + HD seizure detector
+ (Burrello et al., IEEE BioCAS 2018)  -  one-notebook version
+===============================================================================
+
+Project : MSc CS thesis, LSU Shreveport - "Localization of Epileptic Seizures"
+Author  : Mostafij Rahman
+Source  : http://ieeg-swez.ethz.ch/  (Short-term Dataset and Algorithms)
+Paper   : A. Burrello, K. Schindler, L. Benini, A. Rahimi, "One-shot Learning for
+          iEEG Seizure Detection Using End-to-end Binary Operations: Local Binary
+          Patterns with Hyperdimensional Computing", IEEE BioCAS 2018
+          (arXiv:1809.01926).
+
+The notebook  SWEC_LBPHD_replication.ipynb  repeats, in one file, every step
+that was run on the lab PC (VS Code terminal + scripts, 1-6 October 2026):
+
+  Step 1   Settings and machine check
+  Step 2   Project folders, VS Code settings, .gitignore, requirements.txt
+  Step 3   Install Python packages (PyTorch, SciPy, ...)
+  Step 4   Git repository (optional)
+  Step 5   Download dataset + original ETH code (optional, skipped if present)
+  Step 6   Verify the dataset (16 patients, 100 seizure files)
+  Step 7   Install the Python 3 / PyTorch 2 version of LBP+HD + self-test
+  Step 8   Train and test LBP+HD for every patient   (LONG: ~2 days on CPU)
+  Step 9   Rebuild summary.csv + metrics under the paper's protocol
+  Step 10  Compare with the paper's Tables I-II and with the lab run, plot
+
+The ported LBP+HD code is embedded in the notebook (Step 7), so nothing else
+has to be copied from the lab PC except the dataset.
+
+
+-------------------------------------------------------------------------------
+1. REQUIREMENTS
+-------------------------------------------------------------------------------
+- Windows 10/11 (other systems work; change ROOT in Step 1)
+- Python 3.11  (3.10 / 3.12 should also work; NOT 3.13+, because numpy<2 has
+  no packages for it)
+- VS Code with the "Python" and "Jupyter" extensions (Microsoft), or Jupyter
+- Git (optional, for the change history)
+- Disk: ~12 GB for the unpacked data (+ ~12 GB more if the notebook downloads
+  the zips), plus ~1 GB for results
+- An NVIDIA GPU is optional. Without one everything runs on the CPU
+  (lab PC: no GPU, full run ~2 days).
+
+
+-------------------------------------------------------------------------------
+2. ONE-TIME SETUP ON A NEW COMPUTER
+-------------------------------------------------------------------------------
+Open PowerShell and run:
+
+  2.1  Install the software (skip what is already installed)
+         winget install -e --id Python.Python.3.11
+         winget install -e --id Microsoft.VisualStudioCode
+         winget install -e --id Git.Git
+       Close and reopen PowerShell afterwards.
+
+  2.2  Create the project folder and copy two files into it
+         mkdir C:\Users\mrahman\sEEG
+       Copy  SWEC_LBPHD_replication.ipynb  and  README.txt  into it.
+
+  2.3  Create the Python environment (inside the project folder)
+         cd C:\Users\mrahman\sEEG
+         Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+         py -3.11 -m venv .venv
+         .\.venv\Scripts\Activate.ps1
+         python -m pip install --upgrade pip ipykernel notebook
+       The prompt now starts with (.venv).
+
+  2.4  (Git only) set your name once:
+         git config --global user.name  "Mostafij Rahman"
+         git config --global user.email "you@example.com"
+
+
+-------------------------------------------------------------------------------
+3. THE DATASET
+-------------------------------------------------------------------------------
+Expected location (one folder per patient, one .mat file per seizure):
+
+  C:\Users\mrahman\sEEG\data\raw\swec_ethz_short\ID1\Sz1.mat ... ID16\Sz6.mat
+
+Either
+  a) copy the folders ID1 ... ID16 from the lab PC
+     (C:\Users\mrahman\sEEG\data\raw\swec_ethz_short\ID*), 100 .mat files,
+     ~12 GB in total; or
+  b) set  DOWNLOAD_DATA = True  in Step 1 of the notebook. Step 5 then
+     downloads the 19 zip files from ETH Zurich and unpacks them. ID4a/4b,
+     ID13a/b and ID14a/b are merged into ID4, ID13 and ID14 automatically.
+
+Seizure files per dataset folder (Step 6 checks this):
+  ID1 13 | ID2 4 | ID3 2 | ID4 14 | ID5 10 | ID6 4 | ID7 2 | ID8 2
+  ID9 9  | ID10 5 | ID11 2 | ID12 10 | ID13 7 | ID14 7 | ID15 3 | ID16 6
+
+
+-------------------------------------------------------------------------------
+4. RUNNING THE NOTEBOOK
+-------------------------------------------------------------------------------
+VS Code:
+  1. File -> Open Folder -> C:\Users\mrahman\sEEG
+  2. Open SWEC_LBPHD_replication.ipynb
+  3. "Select Kernel" (top right) -> Python Environments -> .venv (Python 3.11)
+  4. Run the cells from top to bottom (Shift+Enter), or "Run All".
+
+Jupyter instead of VS Code:
+  cd C:\Users\mrahman\sEEG
+  .\.venv\Scripts\Activate.ps1
+  jupyter notebook SWEC_LBPHD_replication.ipynb
+
+Important:
+  - After Step 3 installs PyTorch/NumPy for the first time, RESTART THE KERNEL
+    and run the Step 1 cells again. After ANY kernel restart, run Step 1 first.
+  - Step 8a is a smoke test on patient 6 (~10 min on CPU). Expected:
+    specificity 100, sensitivity 100, mean delay ~6.25 s (paper: 6.3 s).
+  - Step 8b is the long run. Keep the PC awake (Settings -> System -> Power ->
+    Sleep: Never). It can be stopped and restarted: patients whose
+    predictions are complete are skipped.
+  - Do not open summary.csv in Excel while Step 8 or 9 runs: Excel locks the file.
+
+Running everything unattended (no open VS Code window needed):
+  cd C:\Users\mrahman\sEEG
+  .\.venv\Scripts\Activate.ps1
+  jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=-1 SWEC_LBPHD_replication.ipynb
+  (Restart the command after Step 3 has installed PyTorch for the first time.)
+
+
+-------------------------------------------------------------------------------
+5. SETTINGS (first code cell of Step 1)
+-------------------------------------------------------------------------------
+  ROOT            project folder               default C:\Users\mrahman\sEEG
+  DOWNLOAD_DATA   download the dataset zips      default False
+  DOWNLOAD_CODE   download the original ETH code default True (reference only)
+  FOLD_MODE       "full"     = exactly the lab run: sliding k-fold for every
+                               patient, 679 seizure tests, ~2 days on CPU
+                  "original" = only what the paper's tables need, 246 tests,
+                               ~2.8x faster; paper-protocol results identical
+  SEED            hypervector random seed        default 1 (authors' value)
+  RUN_PATIENTS    paper patient numbers to run   default all 16, smallest first
+  RERUN_EXISTING  re-run finished patients       default False
+  USE_GIT         keep a Git history             default True
+
+The scripts also read these environment variables (set by the notebook):
+  SWEC_ROOT, SWEC_FOLDS, SWEC_SEED, SWEC_PATIENT ("6", "1,2,3" or "all"),
+  SWEC_GPU (GPU index), SWEC_ID_MAP (force direct|transform|inverse),
+  SWEC_ORIGINAL_TRAIN_INDEX=1 (reproduce the original training-index bug),
+  SWEC_FAST=0 (use the original, slower encoder; results identical).
+
+
+-------------------------------------------------------------------------------
+6. FINAL FOLDER LAYOUT
+-------------------------------------------------------------------------------
+C:\Users\mrahman\sEEG\
+|-- SWEC_LBPHD_replication.ipynb      <- this notebook (steps 1-10)
+|-- README.txt                        <- this file
+|-- requirements.txt                  (Step 2)
+|-- .gitignore                        (Step 2; excludes data, .venv, results)
+|-- .git\                             (Step 4, optional)
+|-- .venv\                            Python 3.11 environment (setup 2.3)
+|-- .vscode\
+|   |-- settings.json                 (Step 2)
+|   `-- launch.json                   (Step 2; F5 runs a script for patient 6)
+|-- data\
+|   `-- raw\
+|       `-- swec_ethz_short\
+|           |-- ID1\  Sz1.mat ... Sz13.mat
+|           |-- ...
+|           |-- ID16\ Sz1.mat ... Sz6.mat
+|           `-- _zips\                downloaded zips (only if Step 5 downloaded)
+|-- code\
+|   `-- swec_ethz_short\
+|       |-- LBP+HD\
+|       |   `-- LBP+HD\               <- scripts run from here (Step 7/8)
+|       |       |-- iEEGClassifierLBP+HD.py   ported training + testing
+|       |       |-- iEEGFunctions.py          ported HD encoder (LBP + HD)
+|       |       |-- HD_PostProcessing.py      ported post-processing
+|       |       |-- swec_config.py            shared paths/tables/settings (new)
+|       |       |-- paper_protocol_metrics.py paper-protocol metrics (new)
+|       |       `-- README.md                 authors' original (if downloaded)
+|       |-- baselines\                authors' LBP+SVM / LGP+MLP (not ported yet)
+|       |-- LBP+HD_Identification\    authors' TBME 2019 code (not ported yet)
+|       `-- _zips\                    original code zips (Step 5)
+|-- scripts\
+|   `-- verify_swec_short.py          dataset checker + loader (Step 6)
+`-- results\
+    |-- swec_short_inventory.csv      one row per seizure file (Step 6)
+    |-- lbphd_P<n>.log                console output per patient (Step 8)
+    |-- postprocessing_all.log        (Step 9)
+    |-- paper_protocol_metrics.log    (Step 9)
+    |-- plots\
+    |   |-- ID1_Sz1.png               example recording (Step 6)
+    |   `-- lbphd_vs_paper.png        replication vs paper (Step 10)
+    `-- swec_short\
+        `-- LBP+HD\
+            |-- predictions\Pat1 ... Pat16\HDClassifier_Seizure<j>Cross<k>.pt
+            |-- summary.csv                       released-code metrics (Step 9)
+            `-- LBPHD_replication_vs_BioCAS2018.csv  paper vs replication (Step 9)
+
+Patient numbers: the scripts use the PAPER's patient numbers (P1-P16). The
+dataset folders use different numbers; the mapping is Patient_trasformation in
+swec_config.py, e.g. paper P6 = ID7, P3 = ID4, P10 = ID1. It is detected
+automatically from the seizure counts (Step 7 prints "mapping: transform").
+
+
+-------------------------------------------------------------------------------
+7. WHAT THE TWO RESULT TABLES MEAN
+-------------------------------------------------------------------------------
+summary.csv (released-code metrics, = what HD_PostProcessing.py prints)
+  Averages over every recording in every fold, INCLUDING the seizures used for
+  training.
+
+LBPHD_replication_vs_BioCAS2018.csv (paper protocol, use this for the thesis)
+  Unseen seizures only. Table I patients (1,2,4,5,6,8,11,13,15,16): k-fold.
+  Table II patients (3,7,9,10,12,14): single split - train on the first m
+  seizures, test on the rest. Columns: paper_* = published values, repl_* =
+  this replication, released_* = released-code metrics.
+
+
+-------------------------------------------------------------------------------
+8. EXPECTED RESULTS (lab PC run, 3 October 2026, FOLD_MODE=full, SEED=1, CPU)
+-------------------------------------------------------------------------------
+Step 10 compares your numbers with these automatically.
+(delay s / specificity % / sensitivity %;  paper -> replication)
+
+Table I                                   Table II
+  P1   6.3/100/100  ->  7.21/100/100        P3  21.8/94.17/100 -> 15.91/87.19/100
+  P2  15.1/100/100  -> 16.04/100/100        P7   5.0/44.00/100 -> -9.38/11.62/100
+  P4  34.5/100/100  -> 34.04/100/100        P9  16.2/100.0/100 -> 15.67/100.0/100
+  P5  20.9/100/100  -> 25.03/100/100        P10  9.3/99.47/ 90 ->  4.11/98.32/ 90
+  P6   6.3/100/100  ->  6.25/100/100        P12 12.6/93.10/100 ->  0.25/71.40/100
+  P8  13.2/100/100  -> 13.58/100/100        P14 21.7/100.0/100 ->  5.42/97.60/100
+  P11  7.0/100/100  ->  7.25/100/100
+  P13 10.0/100/100  -> 10.25/100/100
+  P15 36.4/100/100  -> 36.04/100/100
+  P16 32.3/100/100  -> 31.00/100/100
+
+Summary:
+  - Table I: fully reproduced. 100 % specificity and sensitivity for all 10
+    patients; mean delay 18.7 s (paper 18.2 s).
+  - Table II: sensitivity identical to the paper. Specificity matches P9 and is
+    close for P10/P14, but lower for P3, P12 and P7.
+  - 64 of 65 unseen seizures detected, the same as the paper.
+  - Likely cause of the Table II gap: the random hypervectors differ from the
+    authors' (PyTorch 2 vs the 2018 version, same seed), while the
+    per-patient thresholds were tuned to the authors' vectors. Next step: rerun
+    Table II patients with several seeds (FOLD_MODE="original",
+    RUN_PATIENTS=[3,7,9,10,12,14], different SEED values), copying
+    results\swec_short\LBP+HD aside between seeds.
+
+
+-------------------------------------------------------------------------------
+9. CHANGES FROM THE AUTHORS' ORIGINAL CODE (all marked "PORT:" in the code)
+-------------------------------------------------------------------------------
+  1. Python 2.7 -> 3.11 and old PyTorch -> PyTorch 2; runs on CPU or any GPU
+     (the original required CUDA GPU #1 of the ETH server).
+  2. The released training and post-processing scripts used different file
+     names, folders and fold counts and could not run together; they now
+     share swec_config.py.
+  3. Bug fix: from the 2nd fold on, training read seizure i+1+cross but took
+     the ictal times of seizure i+1. Fixed; SWEC_ORIGINAL_TRAIN_INDEX=1 restores
+     the original behaviour.
+  4. Patient numbering resolved (paper numbers vs dataset folders),
+     checked against the seizure counts.
+  5. A vectorised HD encoder gives bit-identical output to the original
+     sample-by-sample loop (checked in Step 7); SWEC_FAST=0 uses the original.
+  6. One progress line per seizure instead of one per half second; division by
+     zero guarded when nothing is detected.
+  7. Metrics: summary.csv keeps the released definition; the paper protocol
+     (unseen seizures only, single split for Table II) is computed separately
+     by paper_protocol_metrics.py.
+
+
+-------------------------------------------------------------------------------
+10. TROUBLESHOOTING (problems met on the lab PC)
+-------------------------------------------------------------------------------
+"No module named scipy" / packages go to Python313
+    The notebook kernel is not the .venv. Select the .venv kernel (section 4)
+    and rerun Step 3.
+
+"Found no NVIDIA driver on your system"
+    Only appears with the ORIGINAL scripts (torch.cuda.set_device). The ported
+    scripts use the CPU automatically. Rerun Step 7 to restore them.
+
+PermissionError ... summary.csv
+    summary.csv is open in Excel. Close it and rerun Step 9 (nothing is lost;
+    predictions are saved).
+
+"git is not recognized"
+    Install Git (section 2.1) and restart VS Code, or set USE_GIT = False.
+
+A file named iEEGClassifierLBP_HD.py appears
+    A browser renamed "+" to "_" when downloading. The notebook writes the
+    correct name itself (Step 7); delete the "_HD" copy.
+
+"Seizure-file counts ... do not match"
+    Data missing or merged wrongly. Check Step 6 and the table in section 3.
+
+Kernel died / PC restarted during Step 8
+    Run Step 1, then Step 8b again: finished patients are skipped.
+
+numpy 2.x found
+    pip install "numpy<2" in the .venv, restart the kernel.
